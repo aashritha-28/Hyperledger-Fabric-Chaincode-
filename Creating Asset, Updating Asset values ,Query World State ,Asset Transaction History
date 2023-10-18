@@ -1,0 +1,157 @@
+package main
+
+import (
+    "encoding/json"
+    "fmt"
+
+    "github.com/hyperledger/fabric/core/chaincode/shim"
+    "github.com/hyperledger/fabric/protos/peer"
+)
+
+type AssetChaincode struct{}
+
+type Asset struct {
+    DealerID     string  `json:"DEALERID"`
+    MSISDN       string  `json:"MSISDN"`
+    MPIN         string  `json:"MPIN"`
+    Balance      float64 `json:"BALANCE"`
+    Status       string  `json:"STATUS"`
+    TransAmount  float64 `json:"TRANSAMOUNT"`
+    TransType    string  `json:"TRANSTYPE"`
+    Remarks      string  `json:"REMARKS"`
+}
+
+func (t *AssetChaincode) Init(stub shim.ChaincodeStubInterface) peer.Response {
+    return shim.Success(nil)
+}
+
+func (t *AssetChaincode) Invoke(stub shim.ChaincodeStubInterface) peer.Response {
+    function, args := stub.GetFunctionAndParameters()
+
+    if function == "createAsset" {
+        return t.createAsset(stub, args)
+    } else if function == "updateAsset" {
+        return t.updateAsset(stub, args)
+    } else if function == "readAsset" {
+        return t.readAsset(stub, args)
+    } else if function == "getAssetHistory" {
+        return t.getAssetHistory(stub, args)
+    }
+
+    return shim.Error("Invalid function name")
+}
+
+func (t *AssetChaincode) createAsset(stub shim.ChaincodeStubInterface, args []string) peer.Response {
+    if len(args) != 8 {
+        return shim.Error("Incorrect number of arguments. Expecting 8")
+    }
+
+    asset := Asset{
+        DealerID:    args[0],
+        MSISDN:      args[1],
+        MPIN:        args[2],
+        Balance:     args[3],
+        Status:      args[4],
+        TransAmount: args[5],
+        TransType:   args[6],
+        Remarks:     args[7],
+    }
+
+    assetJSON, err := json.Marshal(asset)
+    if err != nil {
+        return shim.Error(err.Error())
+    }
+
+    err = stub.PutState(asset.DealerID, assetJSON)
+    if err != nil {
+        return shim.Error(err.Error())
+    }
+
+    return shim.Success(nil)
+}
+
+func (t *AssetChaincode) updateAsset(stub shim.ChaincodeStubInterface, args []string) peer.Response {
+    if len(args) != 2 {
+        return shim.Error("Incorrect number of arguments. Expecting 2")
+    }
+
+    assetJSON, err := stub.GetState(args[0])
+    if err != nil {
+        return shim.Error(err.Error())
+    }
+
+    if assetJSON == nil {
+        return shim.Error("Asset not found")
+    }
+
+    asset := new(Asset)
+    err = json.Unmarshal(assetJSON, asset)
+    if err != nil {
+        return shim.Error(err.Error())
+    }
+
+    asset.Status = args[1]
+
+    updatedAssetJSON, err := json.Marshal(asset)
+    if err != nil {
+        return shim.Error(err.Error())
+    }
+
+    err = stub.PutState(args[0], updatedAssetJSON)
+    if err != nil {
+        return shim.Error(err.Error())
+    }
+
+    return shim.Success(nil)
+}
+
+func (t *AssetChaincode) readAsset(stub shim.ChaincodeStubInterface, args []string) peer.Response {
+    if len(args) != 1 {
+        return shim.Error("Incorrect number of arguments. Expecting 1")
+    }
+
+    assetJSON, err := stub.GetState(args[0])
+    if err != nil {
+        return shim.Error(err.Error())
+    }
+
+    if assetJSON == nil {
+        return shim.Error("Asset not found")
+    }
+
+    return shim.Success(assetJSON)
+}
+
+func (t *AssetChaincode) getAssetHistory(stub shim.ChaincodeStubInterface, args []string) peer.Response {
+    if len(args) != 1 {
+        return shim.Error("Incorrect number of arguments. Expecting 1")
+    }
+
+    resultsIterator, err := stub.GetHistoryForKey(args[0])
+    if err != nil {
+        return shim.Error(err.Error())
+    }
+    defer resultsIterator.Close()
+
+    var history []string
+    for resultsIterator.HasNext() {
+        modification, err := resultsIterator.Next()
+        if err != nil {
+            return shim.Error(err.Error())
+        }
+        history = append(history, string(modification.Value))
+    }
+
+    historyJSON, err := json.Marshal(history)
+    if err != nil {
+        return shim.Error(err.Error())
+    }
+
+    return shim.Success(historyJSON)
+}
+
+func main() {
+    if err := shim.Start(new(AssetChaincode)); err != nil {
+        fmt.Printf("Error starting AssetChaincode: %s", err)
+    }
+}
